@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "231386611136",
+    "project_id": "rescuelink-ba8d6",
+    "storage_bucket": "rescuelink-ba8d6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:231386611136:android:b2c8f539b179df8285dc25",
+        "android_client_info": {
+          "package_name": "com.rescuelink"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCpgLNV6if1JxUivCO1nLLRB7xVJpEW3K0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
