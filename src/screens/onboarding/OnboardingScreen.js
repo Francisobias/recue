@@ -10,8 +10,9 @@ import {
   SafeAreaView,
 } from 'react-native';
 import AppIntroSlider from 'react-native-app-intro-slider';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const slides = [
   {
@@ -23,7 +24,7 @@ const slides = [
   {
     key: '2',
     title: 'Live Location Tracking',
-    text: 'Share your exact location with rescuers even when offline',
+    text: 'Share your exact location with rescuers even when offline or in remote areas',
     image: require('../../../assets/onboard2.png'),
   },
   {
@@ -41,22 +42,40 @@ const slides = [
 ];
 
 export default function OnboardingScreen({ navigation }) {
+  // Handle onboarding completion
+  const handleOnboardingComplete = async () => {
+    try {
+      // Mark as onboarding completed
+      await AsyncStorage.setItem('hasSeenOnboarding', 'true');
+      console.log('✅ Onboarding completed, marked as seen');
+      
+      // Navigate to Terms screen
+      navigation.replace('Terms');
+    } catch (error) {
+      console.log('❌ Error saving onboarding status:', error);
+      // Still navigate even if save fails
+      navigation.replace('Terms');
+    }
+  };
+
   const renderItem = ({ item }) => {
     return (
       <View style={styles.slide}>
-        <Image source={item.image} style={styles.image} />
-        <Text style={styles.title}>{item.title}</Text>
-        <Text style={styles.text}>{item.text}</Text>
+        <View style={styles.contentContainer}>
+          <Image source={item.image} style={styles.image} />
+          <View style={styles.textContainer}>
+            <Text style={styles.title}>{item.title}</Text>
+            <Text style={styles.text}>{item.text}</Text>
+          </View>
+        </View>
       </View>
     );
   };
 
-  // FIXED: Tama na ang structure!
   const renderNextButton = () => {
     return (
       <View style={styles.buttonCircle}>
         <Text style={styles.buttonText}>Next</Text>
-        <Text style={styles.arrow}>›</Text>
       </View>
     );
   };
@@ -65,7 +84,7 @@ export default function OnboardingScreen({ navigation }) {
     return (
       <TouchableOpacity
         style={styles.doneButton}
-        onPress={() => navigation.replace('Terms')}
+        onPress={handleOnboardingComplete}
       >
         <Text style={styles.doneText}>Get Started</Text>
       </TouchableOpacity>
@@ -74,7 +93,7 @@ export default function OnboardingScreen({ navigation }) {
 
   const renderSkipButton = () => {
     return (
-      <TouchableOpacity onPress={() => navigation.replace('Terms')}>
+      <TouchableOpacity onPress={handleOnboardingComplete}>
         <Text style={styles.skipText}>Skip</Text>
       </TouchableOpacity>
     );
@@ -87,8 +106,8 @@ export default function OnboardingScreen({ navigation }) {
         renderItem={renderItem}
         showSkipButton={true}
         showNextButton={true}
-        onDone={() => navigation.replace('Terms')}
-        onSkip={() => navigation.replace('Terms')}
+        onDone={handleOnboardingComplete}
+        onSkip={handleOnboardingComplete}
         renderNextButton={renderNextButton}
         renderDoneButton={renderDoneButton}
         renderSkipButton={renderSkipButton}
@@ -101,54 +120,99 @@ export default function OnboardingScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#ffffffff' },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#ffffff' 
+  },
   slide: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
-    backgroundColor: '#ffffffff',
+    backgroundColor: '#ffffff',
+  },
+  contentContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 80,
   },
   image: {
-    width: width * 0.8,
-    height: width * 0.8,
+    width: width * 0.75,
+    height: width * 0.75,
     resizeMode: 'contain',
     marginBottom: 40,
+  },
+  textContainer: {
+    alignItems: 'center',
+    maxWidth: width * 0.85,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#222',
     textAlign: 'center',
     marginBottom: 20,
-    paddingHorizontal: 20,
+    paddingHorizontal: 10,
   },
   text: {
-    fontSize: 16,
-    color: '#ccc',
+    fontSize: 17,
+    color: '#666',
     textAlign: 'center',
     lineHeight: 24,
-    paddingHorizontal: 30,
+    paddingHorizontal: 20,
   },
   buttonCircle: {
     backgroundColor: '#e74c3c',
     paddingHorizontal: 30,
     paddingVertical: 12,
     borderRadius: 30,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
   },
-  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  arrow: { color: '#fff', fontSize: 24, marginLeft: 8 },
+  buttonText: { 
+    color: '#fff', 
+    fontWeight: 'bold', 
+    fontSize: 16 
+  },
   doneButton: {
     backgroundColor: '#e74c3c',
     paddingHorizontal: 50,
     paddingVertical: 16,
     borderRadius: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 6,
   },
-  doneText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
-  skipText: { color: '#999', fontSize: 16, fontWeight: '600' },
-  dot: { backgroundColor: '#333', width: 10, height: 10, borderRadius: 5 },
-  activeDot: { backgroundColor: '#e74c3c', width: 20, height: 10, borderRadius: 5 },
+  doneText: { 
+    color: '#fff', 
+    fontWeight: 'bold', 
+    fontSize: 18 
+  },
+  skipText: { 
+    color: '#666', 
+    fontSize: 16, 
+    fontWeight: '600',
+    paddingHorizontal: 20,
+  },
+  dot: { 
+    backgroundColor: '#ddd', 
+    width: 10, 
+    height: 10, 
+    borderRadius: 5 
+  },
+  activeDot: { 
+    backgroundColor: '#e74c3c', 
+    width: 20, 
+    height: 10, 
+    borderRadius: 5 
+  },
 });

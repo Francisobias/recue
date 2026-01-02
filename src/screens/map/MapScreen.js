@@ -9,46 +9,74 @@ import {
 } from 'react-native';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage'; // ← NA-ADD NA!
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useToast } from '../../components/Toast';
+import { useRoute } from '@react-navigation/native';
 
 export default function MapScreen() {
-  const [location, setLocation] = useState(null);
-  const [speedKmh, setSpeedKmh] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const mapRef = useRef(null);
+  const route = useRoute();
   const toast = useToast();
 
-  // AUTO-SAVE LAST LOCATION EVERY 10 SECONDS (OFFLINE MODE)
+  // Optional: receive specific location from params (e.g. from HistoryScreen)
+  const initialLocation = route.params?.location || route.params?.initialRegion;
+
+  const [location, setLocation] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const mapRef = useRef(null);
+
+  // Load last known location (offline fallback)
   useEffect(() => {
-    const saveLocationInterval = setInterval(async () => {
+    const loadLastLocation = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('@last_known_location');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setLocation({
+            latitude: parsed.latitude,
+            longitude: parsed.longitude,
+            accuracy: parsed.accuracy || 50,
+          });
+          setLoading(false);
+        }
+      } catch (e) {
+        console.log('No saved location found');
+      }
+    };
+
+    loadLastLocation();
+  }, []);
+
+  // Auto-save location every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(async () => {
       if (location) {
         try {
           await AsyncStorage.setItem(
             '@last_known_location',
             JSON.stringify({
-              ...location,
-              speed: speedKmh,
+              latitude: location.latitude,
+              longitude: location.longitude,
+              accuracy: location.accuracy || 20,
               timestamp: new Date().toISOString(),
             })
           );
         } catch (e) {
-          console.log('Failed to save location offline:', e);
+          console.log('Save location failed:', e);
         }
       }
-    }, 10000); // every 10 seconds
+    }, 10000);
 
-    return () => clearInterval(saveLocationInterval);
-  }, [location, speedKmh]);
+    return () => clearInterval(interval);
+  }, [location]);
 
-  // MAIN LOCATION TRACKING
+  // Live location tracking
   useEffect(() => {
     let subscription;
 
     const startTracking = async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        toast('Location permission required!');
+        toast('Location permission required', 4000, 'warning');
         setLoading(false);
         return;
       }
@@ -58,98 +86,99 @@ export default function MapScreen() {
           accuracy: Location.Accuracy.BestForNavigation,
           timeInterval: 1000,
           distanceInterval: 3,
-          ...(Platform.OS === 'ios' && { activityType: Location.ActivityType.AutomotiveNavigation }),
         },
         (loc) => {
-          const newCoords = {
+          const newLocation = {
             latitude: loc.coords.latitude,
             longitude: loc.coords.longitude,
-            accuracy: loc.coords.accuracy,
+            accuracy: loc.coords.accuracy || 20,
           };
 
-          setLocation(newCoords);
+          setLocation(newLocation);
 
-          const speed = loc.coords.speed || 0;
-          const speedInKmh = speed > 0 ? Math.round(speed * 3.6) : 0;
-          setSpeedKmh(speedInKmh);
-
-          mapRef.current?.animateCamera({
-            center: newCoords,
-            zoom: 17.5,
-            pitch: 45,
-          }, { duration: 1000 });
+          // Smooth camera follow
+          if (mapRef.current) {
+            mapRef.current.animateCamera(
+              {
+                center: newLocation,
+                pitch: 45,
+                zoom: 17,
+              },
+              { duration: 1500 }
+            );
+          }
         }
       );
 
-      // Initial position
-      try {
-        const initial = await Location.getCurrentPositionAsync({});
-        setLocation({
-          latitude: initial.coords.latitude,
-          longitude: initial.coords.longitude,
-          accuracy: initial.coords.accuracy,
-        });
-      } catch (e) {
-        toast('Failed to get initial location');
-      } finally {
-        setLoading(false);
-      }
+      setLoading(false);
     };
 
     startTracking();
 
     return () => {
-      subscription?.remove();
+      if (subscription) subscription.remove();
     };
   }, []);
 
-  if (loading || !location) {
+  if (loading) {
     return (
-      <View style={styles.loading}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#e74c3c" />
-        <Text style={styles.loadingText}>Getting live location...</Text>
+        <Text style={styles.loadingText}>Getting your location...</Text>
       </View>
     );
   }
+
+  if (!location) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>Location Unavailable</Text>
+        <Text style={styles.errorSubtext}>Please enable GPS and try again</Text>
+      </View>
+    );
+  }
+
+  const region = initialLocation || {
+    latitude: location.latitude,
+    longitude: location.longitude,
+    latitudeDelta: 0.005,
+    longitudeDelta: 0.005,
+  };
 
   return (
     <View style={styles.container}>
       <MapView
         ref={mapRef}
         style={styles.map}
-        showsUserLocation={true}
-        followsUserLocation={true}
+        region={region}
+        showsUserLocation={false}
         showsMyLocationButton={true}
         showsCompass={true}
         showsTraffic={true}
+        showsBuildings={true}
+        loadingEnabled={true}
       >
-        <Marker coordinate={location} anchor={{ x: 0.5, y: 0.5 }}>
-          <View style={styles.marker}>
+        {/* Custom Marker */}
+        <Marker coordinate={location}>
+          <View style={styles.customMarker}>
+            <View style={styles.markerPulse} />
             <View style={styles.markerInner} />
           </View>
         </Marker>
 
+        {/* Accuracy Circle */}
         <Circle
           center={location}
-          radius={location.accuracy || 20}
-          fillColor="rgba(100, 180, 255, 0.3)"
-          strokeColor="rgba(50, 130, 255, 0.8)"
+          radius={location.accuracy || 30}
+          fillColor="rgba(52, 152, 219, 0.25)"
+          strokeColor="#3498db"
           strokeWidth={2}
         />
       </MapView>
 
-      {/* SPEED + ACCURACY CARD */}
-      <View style={styles.speedCard}>
-        <Text style={styles.speedText}>{speedKmh}</Text>
-        <Text style={styles.speedUnit}>km/h</Text>
-        <Text style={styles.accuracyText}>
-          ±{Math.round(location.accuracy || 0)}m
-        </Text>
-      </View>
-
-      {/* Status Bar */}
+      {/* Simple Status Bar */}
       <View style={styles.statusBar}>
-        <Text style={styles.statusText}>Live Tracking • Location Active</Text>
+        <Text style={styles.statusText}>Live Location Active</Text>
       </View>
     </View>
   );
@@ -159,83 +188,82 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { flex: 1 },
 
-  loading: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f8f9fc',
   },
-  loadingText: { marginTop: 12, fontSize: 16, color: '#555' },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
+  },
 
-  speedCard: {
-    position: 'absolute',
-    bottom: 100,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    shadowColor: '#000',
-    shadowOpacity: 0.5,
-    shadowRadius: 15,
-    elevation: 20,
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 30,
+    backgroundColor: '#f8f9fc',
   },
-  speedText: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  speedUnit: {
+  errorText: {
     fontSize: 18,
-    color: '#fff',
-    marginLeft: 6,
-    marginBottom: 6,
+    fontWeight: '600',
+    color: '#e74c3c',
+    marginBottom: 8,
   },
-  accuracyText: {
-    fontSize: 12,
-    color: '#aaa',
-    position: 'absolute',
-    bottom: 6,
-    right: 16,
+  errorSubtext: {
+    fontSize: 14,
+    color: '#888',
+    textAlign: 'center',
   },
 
   statusBar: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 55 : 35,
+    top: Platform.OS === 'ios' ? 60 : 40,
     left: 0,
     right: 0,
     alignItems: 'center',
   },
   statusText: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    backgroundColor: 'rgba(39, 174, 96, 0.95)',
+    color: '#fff',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     borderRadius: 20,
-    fontSize: 13,
-    color: '#27ae60',
+    fontSize: 14,
     fontWeight: '600',
   },
 
-  marker: {
-    width: 36,
-    height: 36,
+  customMarker: {
+    width: 40,
+    height: 40,
     backgroundColor: '#e74c3c',
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 4,
     borderColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOpacity: 0.6,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 15,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    elevation: 20,
+  },
+  markerPulse: {
+    position: 'absolute',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#e74c3c',
+    opacity: 0.4,
   },
   markerInner: {
-    width: 14,
-    height: 14,
+    width: 16,
+    height: 16,
     backgroundColor: '#fff',
-    borderRadius: 7,
+    borderRadius: 8,
   },
 });
